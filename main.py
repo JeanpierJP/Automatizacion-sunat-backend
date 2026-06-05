@@ -8,8 +8,9 @@ from supabase import create_client, Client
 from extractor import extract_invoice_data
 from pathlib import Path
 from dotenv import load_dotenv
+from database import supabase, BUCKET_NAME
+from email_service import download_attachments_and_process
 import traceback
-
 import re
 from datetime import datetime
 
@@ -46,16 +47,8 @@ def normalize_time(raw: str | None) -> str | None:
     except Exception:
         return None
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-BUCKET_NAME = os.getenv("SUPABASE_BUCKET", "invoices_bucket")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Faltan SUPABASE_URL o SUPABASE_KEY en .env")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Variables de Supabase vienen de database.py
+# (Se eliminó la inicialización redundante aquí)
 
 app = FastAPI(title="API Asistencia")
 
@@ -75,53 +68,38 @@ app.add_middleware(
 )
 
 
-class AttendanceUpdate(BaseModel):
-    worker_name: str | None = None
-    dni: str | None = None
-    date: str | None = None
-    entry_time: str | None = None
-    exit_time: str | None = None
-    shift: str | None = None
-    signature_present: bool | None = None
-    is_free_day: bool | None = None
-    free_day_note: str | None = None
-
-
-
-@app.get("/")
-def health_check():
-    return {"status": "online", "message": "Backend listo"}
-
-
-@app.get("/attendance")
-def get_attendance():
+@app.get("/invoices")
+def get_invoices():
     try:
         response = (
-            supabase.table("attendance")
+            supabase.table("invoices")
             .select("*")
             .order("created_at", desc=True)
             .execute()
         )
         return response.data or []
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listando asistencia: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listando facturas: {str(e)}")
 
 
-# Alias para tu frontend actual (App.jsx usa /invoices)
-@app.get("/invoices")
-def get_invoices_alias():
-    return get_attendance()
+class InvoiceUpdate(BaseModel):
+    nombre_razon_social: str | None = None
+    ruc: str | None = None
+    fecha: str | None = None
+    monto_impuesto: float | None = None
+    operacion: str | None = None
+    periodo: str | None = None
+    importe: float | None = None
 
-
-@app.put("/attendance/{record_id}")
-def update_attendance(record_id: str, item: AttendanceUpdate):
+@app.put("/invoices/{record_id}")
+def update_invoice(record_id: str, item: InvoiceUpdate):
     try:
         update_data = {k: v for k, v in item.model_dump().items() if v is not None}
         if not update_data:
             raise HTTPException(status_code=400, detail="No se enviaron datos para actualizar")
 
         result = (
-            supabase.table("attendance")
+            supabase.table("invoices")
             .update(update_data)
             .eq("id", record_id)
             .execute()
@@ -130,36 +108,39 @@ def update_attendance(record_id: str, item: AttendanceUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error actualizando asistencia: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error actualizando factura: {str(e)}")
 
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    temp_filename = f"temp_{uuid.uuid4()}.pdf"
+    ext = Path(file.filename).suffix.lower()
+    temp_filename = f"temp_{uuid.uuid4()}{ext}"
 
     try:
-        if file.content_type != "application/pdf":
-            raise HTTPException(status_code=400, detail="Solo se aceptan PDFs.")
+        # Ahora aceptamos PDFs e Imágenes
+        allowed_extensions = [".pdf", ".jpg", ".jpeg", ".png"]
+        if ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"Solo se aceptan: {', '.join(allowed_extensions)}")
 
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         data_extracted = extract_invoice_data(temp_filename)
-        print("EXTRACTED:", data_extracted)
-        print("BUCKET:", BUCKET_NAME)
-
+        
         if "error" in data_extracted:
             raise HTTPException(
                 status_code=data_extracted.get("status_code", 422),
                 detail=data_extracted["error"],
             )
 
-        storage_filename = f"{uuid.uuid4()}.pdf"
+        storage_filename = f"{uuid.uuid4()}{ext}"
+        content_type = file.content_type or "application/octet-stream"
+        
         with open(temp_filename, "rb") as f:
             supabase.storage.from_(BUCKET_NAME).upload(
                 path=storage_filename,
                 file=f,
-                file_options={"content-type": "application/pdf"},
+                file_options={"content-type": content_type},
             )
 
         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(storage_filename)
@@ -167,21 +148,23 @@ async def upload_file(file: UploadFile = File(...)):
 
         inserted = 0
         for record in records:
+            # Adaptamos el payload a los campos de factura
+            # Nota: Asegúrate de que tu tabla en Supabase tenga estas columnas
             payload = {
-                "worker_name": record.get("worker_name"),
-                "dni": record.get("dni"),
-                "date": normalize_date_es(record.get("date")),
-                "entry_time": normalize_time(record.get("entry_time")),
-                "exit_time": normalize_time(record.get("exit_time")),
-                "shift": record.get("shift"),
-                "signature_present": record.get("signature_present"),
-                "is_free_day": record.get("is_free_day", False),
-                "free_day_note": record.get("free_day_note", ""),
+                "nombre_razon_social": record.get("nombre_razon_social"),
+                "ruc": record.get("ruc"),
+                "fecha": record.get("fecha"),
+                "monto_impuesto": record.get("monto_impuesto"),
+                "operacion": record.get("operacion"),
+                "periodo": record.get("periodo"),
+                "importe": record.get("importe"),
                 "file_url": public_url,
             }
 
-
-            supabase.table("attendance").insert(payload).execute()
+            # Intentamos insertar en la tabla. 
+            # Si aún no has cambiado el nombre de la tabla en Supabase, 
+            # podrías seguir usando 'attendance' temporalmente o cambiarlo a 'invoices'
+            supabase.table("invoices").insert(payload).execute()
             inserted += 1
 
         return {"status": "success", "records_saved": inserted}
@@ -194,6 +177,16 @@ async def upload_file(file: UploadFile = File(...)):
     finally:
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
+
+@app.post("/sync-email")
+async def sync_email():
+    try:
+        # Ejecutamos la función de email_service
+        download_attachments_and_process()
+        return {"status": "success", "message": "Sincronización de correo completada"}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error en la sincronización: {str(e)}")
 
 # ---- EJECUTAR SERVIDOR ----
 import uvicorn
