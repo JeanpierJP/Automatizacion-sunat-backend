@@ -57,6 +57,7 @@ origins = [
     "http://127.0.0.1:5173",
     "https://proyecto-facturas.vercel.app",
     "https://automatizacion-de-escaneo-doc-front.vercel.app",
+    "https://proyecto-comprobantes.vercel.app",
 ]
 
 app.add_middleware(
