@@ -105,5 +105,57 @@ def download_attachments_and_process():
         traceback.print_exc()
         print(f"Error de conexión: {str(e)}")
 
+def send_sunat_notification(total: int, pdfs: int, xmls: int, errores: int, fecha: str):
+    """Envía resumen de ejecución SUNAT por correo vía Resend."""
+    import resend
+
+    resend.api_key = os.getenv("RESEND_API_KEY", "")
+    if not resend.api_key:
+        print("[Email] RESEND_API_KEY no configurada, se omite el envío.")
+        return
+
+    errores_html = (
+        f'<tr><td style="padding:8px 12px;color:#6b7280;">⚠️ Con error</td>'
+        f'<td style="padding:8px 12px;font-weight:700;color:#fb923c;">{errores}</td></tr>'
+        if errores > 0 else ""
+    )
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#f8fafc;padding:32px;border-radius:12px;">
+      <h2 style="margin:0 0 4px;color:#0ea5e9;font-size:1.4rem;">⚡ ComprobAuto SUNAT</h2>
+      <p style="margin:0 0 24px;color:#64748b;font-size:0.9rem;">Ejecución completada el <strong>{fecha}</strong></p>
+
+      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+        <tr style="background:#f1f5f9;">
+          <td style="padding:8px 12px;color:#475569;font-size:0.85rem;">✅ Procesados</td>
+          <td style="padding:8px 12px;font-weight:700;color:#0f172a;">{total}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;color:#475569;font-size:0.85rem;">📄 PDFs en Drive</td>
+          <td style="padding:8px 12px;font-weight:700;color:#0f172a;">{pdfs}</td>
+        </tr>
+        <tr style="background:#f1f5f9;">
+          <td style="padding:8px 12px;color:#475569;font-size:0.85rem;">📝 XMLs en Drive</td>
+          <td style="padding:8px 12px;font-weight:700;color:#0f172a;">{xmls}</td>
+        </tr>
+        {errores_html}
+      </table>
+
+      <p style="margin:24px 0 0;color:#94a3b8;font-size:0.75rem;text-align:center;">ComprobAuto · Sistema automatizado de comprobantes SUNAT</p>
+    </div>
+    """
+
+    try:
+        resend.Emails.send({
+            "from":    "onboarding@resend.dev",
+            "to":      ["hola@formex.digital"],
+            "subject": f"✅ SUNAT: {total} comprobantes procesados — {fecha}",
+            "html":    html,
+        })
+        print(f"[Email] Notificación enviada a hola@formex.digital")
+    except Exception as e:
+        print(f"[Email] Error al enviar: {e}")
+
+
 if __name__ == "__main__":
     download_attachments_and_process()

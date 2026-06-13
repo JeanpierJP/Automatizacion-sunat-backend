@@ -16,44 +16,49 @@ client = genai.Client(api_key=api_key)
 
 def extract_invoice_data(file_path):
     prompt = """
-Analiza este documento (Factura o Recibo) y extrae la siguiente información técnica. 
-Es vital que seas preciso con los montos y el RUC.
+Analiza este comprobante de pago peruano y extrae EXACTAMENTE estos 4 campos.
 
-Extrae estos campos:
-1) nombre_razon_social: El nombre de la empresa o persona que emite la factura.
-2) ruc: El número de RUC (11 dígitos para Perú).
-3) monto_impuesto: El valor del impuesto (IGV/IVA). Si no hay, pon 0.
-4) operacion: El número de la factura o comprobante (ej: F001-000123).
-5) fecha: La fecha de emisión en formato YYYY-MM-DD.
-6) periodo: El periodo tributario si aparece (ej: 05-2024), si no, infiérelo de la fecha.
-7) importe: El monto total a pagar.
+Campos a extraer:
+1) ruc: RUC del emisor (11 dígitos). Busca junto al texto "RUC:" o "R.U.C.".
+2) tipo_comprobante: Código SUNAT del tipo de comprobante.
+   - "01" = Factura
+   - "03" = Boleta de Venta
+   - "07" = Nota de Crédito
+   - "08" = Nota de Débito
+   Si no puedes determinarlo, usa "01".
+3) serie: La serie del comprobante. Es la parte ANTES del guion (ej: si dice "F001-00001234", la serie es "F001").
+4) numero_comprobante: El número correlativo. Es la parte DESPUÉS del guion (ej: si dice "F001-00001234", el número es "00001234").
 
 Reglas:
 - Si el documento es una foto, usa OCR avanzado para no perder dígitos.
-- Devuelve SOLO un JSON válido.
-- Si hay varios registros en una sola imagen (poco común), devuelve una lista en 'records'.
+- Devuelve SOLO un JSON válido, sin texto extra.
 
 Formato de salida:
 {
   "records": [
     {
-      "nombre_razon_social": "",
       "ruc": "",
-      "monto_impuesto": 0.0,
-      "operacion": "",
-      "fecha": "YYYY-MM-DD",
-      "periodo": "MM-YYYY",
-      "importe": 0.0
+      "tipo_comprobante": "",
+      "serie": "",
+      "numero_comprobante": ""
     }
   ]
 }
 """
 
     try:
-        uploaded = client.files.upload(file=file_path)
+        ext = Path(file_path).suffix.lower()
+        if ext == ".txt":
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = f.read()
+            contents = [prompt + f"\n\nContenido del archivo TXT:\n{text_content}"]
+        else:
+            uploaded = client.files.upload(file=file_path)
+            contents = [prompt, uploaded]
+
         response = client.models.generate_content(
-            model="gemini-2.5-flash", # Usando la versión más estable y rápida
-            contents=[prompt, uploaded],
+            model="gemini-2.5-flash",
+            contents=contents,
             config={"response_mime_type": "application/json"},
         )
 

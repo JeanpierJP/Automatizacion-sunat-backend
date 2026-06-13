@@ -4,7 +4,7 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from supabase import create_client, Client
+from supabase import create_client
 from extractor import extract_invoice_data
 from pathlib import Path
 from dotenv import load_dotenv
@@ -83,14 +83,20 @@ def get_invoices():
         raise HTTPException(status_code=500, detail=f"Error listando facturas: {str(e)}")
 
 
+@app.delete("/invoices")
+def clear_invoices():
+    try:
+        supabase.table("invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        return {"status": "success", "message": "Tabla invoices limpiada"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error limpiando invoices: {str(e)}")
+
+
 class InvoiceUpdate(BaseModel):
-    nombre_razon_social: str | None = None
     ruc: str | None = None
-    fecha: str | None = None
-    monto_impuesto: float | None = None
-    operacion: str | None = None
-    periodo: str | None = None
-    importe: float | None = None
+    tipo_comprobante: str | None = None
+    serie: str | None = None
+    numero_comprobante: str | None = None
 
 @app.put("/invoices/{record_id}")
 def update_invoice(record_id: str, item: InvoiceUpdate):
@@ -114,20 +120,45 @@ def update_invoice(record_id: str, item: InvoiceUpdate):
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
+    import pandas as pd
     ext = Path(file.filename).suffix.lower()
     temp_filename = f"temp_{uuid.uuid4()}{ext}"
 
-    try:
-        # Ahora aceptamos PDFs e Imágenes
-        allowed_extensions = [".pdf", ".jpg", ".jpeg", ".png"]
-        if ext not in allowed_extensions:
-            raise HTTPException(status_code=400, detail=f"Solo se aceptan: {', '.join(allowed_extensions)}")
+    allowed_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".txt", ".xlsx"]
+    if ext not in allowed_extensions:
+        raise HTTPException(status_code=400, detail=f"Solo se aceptan: {', '.join(allowed_extensions)}")
 
+    try:
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        # ── Excel: lectura directa de columnas, sin Gemini ──
+        if ext == ".xlsx":
+            df = pd.read_excel(temp_filename, header=0)
+            inserted = 0
+            for _, row in df.iterrows():
+                try:
+                    tipo   = str(row.iloc[6]).strip()
+                    serie  = str(row.iloc[7]).strip()
+                    numero = str(row.iloc[9]).strip()
+                    ruc    = str(row.iloc[12]).strip()
+                    if not ruc or ruc in ("nan", "RUC", ""):
+                        continue
+                    tipo = tipo.zfill(2) if tipo.isdigit() else tipo
+                    supabase.table("invoices").insert({
+                        "ruc":                ruc,
+                        "tipo_comprobante":   tipo,
+                        "serie":              serie,
+                        "numero_comprobante": numero,
+                    }).execute()
+                    inserted += 1
+                except Exception:
+                    continue
+            return {"status": "success", "records_saved": inserted}
+
+        # ── TXT / PDF / Imagen: extracción con Gemini ──
         data_extracted = extract_invoice_data(temp_filename)
-        
+
         if "error" in data_extracted:
             raise HTTPException(
                 status_code=data_extracted.get("status_code", 422),
@@ -136,7 +167,7 @@ async def upload_file(file: UploadFile = File(...)):
 
         storage_filename = f"{uuid.uuid4()}{ext}"
         content_type = file.content_type or "application/octet-stream"
-        
+
         with open(temp_filename, "rb") as f:
             supabase.storage.from_(BUCKET_NAME).upload(
                 path=storage_filename,
@@ -149,23 +180,13 @@ async def upload_file(file: UploadFile = File(...)):
 
         inserted = 0
         for record in records:
-            # Adaptamos el payload a los campos de factura
-            # Nota: Asegúrate de que tu tabla en Supabase tenga estas columnas
-            payload = {
-                "nombre_razon_social": record.get("nombre_razon_social"),
-                "ruc": record.get("ruc"),
-                "fecha": record.get("fecha"),
-                "monto_impuesto": record.get("monto_impuesto"),
-                "operacion": record.get("operacion"),
-                "periodo": record.get("periodo"),
-                "importe": record.get("importe"),
-                "file_url": public_url,
-            }
-
-            # Intentamos insertar en la tabla. 
-            # Si aún no has cambiado el nombre de la tabla en Supabase, 
-            # podrías seguir usando 'attendance' temporalmente o cambiarlo a 'invoices'
-            supabase.table("invoices").insert(payload).execute()
+            supabase.table("invoices").insert({
+                "ruc":                record.get("ruc"),
+                "tipo_comprobante":   record.get("tipo_comprobante"),
+                "serie":              record.get("serie"),
+                "numero_comprobante": record.get("numero_comprobante"),
+                "file_url":           public_url,
+            }).execute()
             inserted += 1
 
         return {"status": "success", "records_saved": inserted}
@@ -178,6 +199,116 @@ async def upload_file(file: UploadFile = File(...)):
     finally:
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
+
+@app.get("/sunat-comprobantes")
+def get_sunat_comprobantes():
+    try:
+        response = (
+            supabase.table("sunat_comprobantes")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return response.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listando sunat_comprobantes: {str(e)}")
+
+
+@app.post("/run-sunat")
+async def run_sunat():
+    try:
+        from sunat_scraper import run_sunat_scraper
+        from drive_service import upload_to_drive
+        import asyncio
+
+        # Leer comprobantes de la tabla invoices (ya extraídos por OCR)
+        rows = supabase.table("invoices").select(
+            "ruc, tipo_comprobante, serie, numero_comprobante"
+        ).execute()
+
+        comprobantes = [
+            {
+                "ruc_emisor": r["ruc"],
+                "tipo":       r["tipo_comprobante"],
+                "serie":      r["serie"],
+                "numero":     r["numero_comprobante"],
+            }
+            for r in (rows.data or [])
+            if r.get("ruc") and r.get("serie") and r.get("numero_comprobante")
+        ]
+
+        if not comprobantes:
+            raise HTTPException(status_code=400, detail="No hay comprobantes en la tabla invoices para procesar")
+
+        guardados = []
+        errores   = []
+
+        def procesar_uno(r):
+            """Sube PDF y XML a Drive por separado y guarda en sunat_comprobantes."""
+            if "error" in r:
+                errores.append(r)
+                print(f"  [SKIP] {r.get('serie')}-{r.get('numero')}: {r['error']}")
+                return
+
+            drive_pdf_url = ""
+            drive_xml_url = ""
+
+            try:
+                if r.get("pdf"):
+                    drive_pdf_url = upload_to_drive(r["pdf"])
+                    print(f"  [Drive] PDF: {drive_pdf_url}")
+            except Exception as e:
+                print(f"  [Drive] Error PDF: {e}")
+
+            try:
+                if r.get("xml"):
+                    drive_xml_url = upload_to_drive(r["xml"])
+                    print(f"  [Drive] XML: {drive_xml_url}")
+            except Exception as e:
+                print(f"  [Drive] Error XML: {e}")
+
+            payload = {
+                "ruc":                r["ruc_emisor"],
+                "tipo_comprobante":   r.get("tipo", "01"),
+                "serie":              r["serie"],
+                "numero_comprobante": r["numero"],
+                "drive_pdf_url":      drive_pdf_url,
+                "drive_xml_url":      drive_xml_url,
+            }
+            supabase.table("sunat_comprobantes").insert(payload).execute()
+            guardados.append(r)
+            print(f"  [BD] Guardado en sunat_comprobantes: {r['serie']}-{r['numero']}")
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None, lambda: run_sunat_scraper(comprobantes, on_result=procesar_uno)
+        )
+
+        # Enviar notificación por correo
+        from email_service import send_sunat_notification
+        from datetime import date
+        rows_sunat = supabase.table("sunat_comprobantes").select("drive_pdf_url, drive_xml_url").execute()
+        data_sunat = rows_sunat.data or []
+        send_sunat_notification(
+            total   = len(guardados),
+            pdfs    = sum(1 for r in data_sunat if r.get("drive_pdf_url")),
+            xmls    = sum(1 for r in data_sunat if r.get("drive_xml_url")),
+            errores = len(errores),
+            fecha   = date.today().strftime("%d/%m/%Y"),
+        )
+
+        return {
+            "status":          "success",
+            "guardados":       len(guardados),
+            "errores":         len(errores),
+            "detalle_errores": errores,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error en run-sunat: {str(e)}")
+
 
 @app.post("/sync-email")
 async def sync_email():
