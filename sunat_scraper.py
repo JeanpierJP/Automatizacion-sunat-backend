@@ -256,7 +256,11 @@ def run_sunat_scraper(comprobantes: list[dict], on_result=None) -> list[dict]:
     resultados = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=IS_PROD, slow_mo=0 if IS_PROD else 400)
+        browser = p.chromium.launch(
+            headless=IS_PROD,
+            slow_mo=0 if IS_PROD else 400,
+            args=["--no-sandbox", "--disable-setuid-sandbox"] if IS_PROD else [],
+        )
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 
