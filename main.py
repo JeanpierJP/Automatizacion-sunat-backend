@@ -58,6 +58,7 @@ origins = [
     "https://proyecto-facturas.vercel.app",
     "https://automatizacion-de-escaneo-doc-front.vercel.app",
     "https://proyecto-comprobantes.vercel.app",
+    "https://automatizacion-sunat-frontend.vercel.app",
 ]
 
 app.add_middleware(
