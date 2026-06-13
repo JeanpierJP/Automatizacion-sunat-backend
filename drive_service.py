@@ -18,6 +18,13 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 def _service():
     creds = None
 
+    # En Render, el token viene codificado en base64 como variable de entorno
+    token_env = os.getenv("GOOGLE_TOKEN_JSON")
+    if token_env and not Path(TOKEN_FILE).exists():
+        import base64
+        with open(TOKEN_FILE, "w") as f:
+            f.write(base64.b64decode(token_env).decode())
+
     if Path(TOKEN_FILE).exists():
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 

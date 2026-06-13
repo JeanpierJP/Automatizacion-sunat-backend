@@ -11,6 +11,7 @@ SUNAT_USER = os.getenv("SUNAT_USER")
 SUNAT_PASS = os.getenv("SUNAT_PASS")
 EXCEL_PATH = os.getenv("EXCEL_PATH", "Compras Abril 2026.xlsx")
 DOWNLOAD_DIR = "downloads"
+IS_PROD = os.getenv("RENDER") == "true"
 
 LOGIN_URL = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
 
@@ -255,7 +256,7 @@ def run_sunat_scraper(comprobantes: list[dict], on_result=None) -> list[dict]:
     resultados = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, slow_mo=400)
+        browser = p.chromium.launch(headless=IS_PROD, slow_mo=0 if IS_PROD else 400)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 
