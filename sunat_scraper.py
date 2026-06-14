@@ -103,6 +103,7 @@ def cerrar_modal_campana(page):
 
 def ir_a_comprobantes(page):
     """Navega a Nueva Consulta de comprobantes de pago usando el menú de SUNAT."""
+    cerrar_popup(page)
     cerrar_modal_campana(page)
 
     print(f"  [DEBUG] URL: {page.url}")
