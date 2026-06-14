@@ -54,7 +54,7 @@ def cerrar_popup(page):
     """Cierra todos los popups de validación que aparezcan (pueden ser 2 seguidos)."""
     for i in range(3):
         try:
-            page.wait_for_selector("#btnFinalizarValidacionDatos", timeout=6000)
+            page.wait_for_selector("#btnFinalizarValidacionDatos", timeout=20000)
             page.click("#btnFinalizarValidacionDatos")
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             page.wait_for_timeout(1500)
