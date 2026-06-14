@@ -102,12 +102,21 @@ def cerrar_modal_campana(page):
 
 
 def ir_a_comprobantes(page):
-    """Navega a Nueva Consulta de comprobantes de pago usando el menú de SUNAT."""
     cerrar_popup(page)
     cerrar_modal_campana(page)
 
     print(f"  [DEBUG] URL: {page.url}")
     print(f"  [DEBUG] Titulo: {page.title()}")
+
+    # Esperar explícitamente que el menú cargue
+    try:
+        page.wait_for_selector("h4:has-text('Empresas')", timeout=60000)
+    except PWTimeout:
+        print("  [DEBUG] No apareció h4 Empresas, reintentando popup...")
+        cerrar_popup(page)
+        cerrar_modal_campana(page)
+        page.wait_for_selector("h4:has-text('Empresas')", timeout=30000)
+
     print(f"  [DEBUG] h4 Empresas count: {page.locator('h4:has-text(\"Empresas\")').count()}")
     print(f"  [DEBUG] body text (primeros 500): {page.inner_text('body')[:500]}")
 
