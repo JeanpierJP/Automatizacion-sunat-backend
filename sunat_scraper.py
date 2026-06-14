@@ -11,7 +11,7 @@ SUNAT_USER = os.getenv("SUNAT_USER")
 SUNAT_PASS = os.getenv("SUNAT_PASS")
 EXCEL_PATH = os.getenv("EXCEL_PATH", "Compras Abril 2026.xlsx")
 DOWNLOAD_DIR = "downloads"
-IS_PROD = os.getenv("RENDER") == "true"
+IS_PROD = os.getenv("RENDER") == "true" or os.getenv("K_SERVICE") is not None
 
 LOGIN_URL = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm"
 
