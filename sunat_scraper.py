@@ -101,6 +101,11 @@ def ir_a_comprobantes(page):
     """Navega a Nueva Consulta de comprobantes de pago usando el menú de SUNAT."""
     cerrar_modal_campana(page)
 
+    print(f"  [DEBUG] URL: {page.url}")
+    print(f"  [DEBUG] Titulo: {page.title()}")
+    print(f"  [DEBUG] h4 Empresas count: {page.locator('h4:has-text(\"Empresas\")').count()}")
+    print(f"  [DEBUG] body text (primeros 500): {page.inner_text('body')[:500]}")
+
     page.click("h4:has-text('Empresas')", timeout=30000)
     page.wait_for_timeout(2000)
 
