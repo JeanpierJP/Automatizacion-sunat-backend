@@ -51,13 +51,12 @@ def leer_excel() -> list[dict]:
 URL = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*"
 
 def cerrar_popup(page):
-    """Cierra todos los popups de validación que aparezcan (pueden ser 2 seguidos)."""
     for i in range(3):
         try:
-            page.wait_for_selector("#btnFinalizarValidacionDatos", timeout=20000)
+            page.wait_for_selector("#btnFinalizarValidacionDatos", timeout=40000)  # era 20000
             page.click("#btnFinalizarValidacionDatos")
             page.wait_for_load_state("domcontentloaded", timeout=10000)
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(3000)  # era 1500
             print(f"Popup {i+1} cerrado")
         except PWTimeout:
             break  # No hay más popups
@@ -107,6 +106,8 @@ def ir_a_comprobantes(page):
 
     print(f"  [DEBUG] URL: {page.url}")
     print(f"  [DEBUG] Titulo: {page.title()}")
+    print(f"  [DEBUG] body text (primeros 1000): {page.inner_text('body')[:1000]}")
+    print(f"  [DEBUG] h4 tags: {page.eval_on_selector_all('h4', 'els => els.map(e => e.innerText)')}")
 
     # Esperar explícitamente que el menú cargue
     try:
@@ -118,7 +119,6 @@ def ir_a_comprobantes(page):
         page.wait_for_selector("h4:has-text('Empresas')", timeout=30000)
 
     print(f"  [DEBUG] h4 Empresas count: {page.locator('h4:has-text(\"Empresas\")').count()}")
-    print(f"  [DEBUG] body text (primeros 500): {page.inner_text('body')[:500]}")
 
     page.click("h4:has-text('Empresas')", timeout=30000)
     page.wait_for_timeout(2000)
