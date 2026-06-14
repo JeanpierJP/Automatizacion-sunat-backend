@@ -311,6 +311,103 @@ async def run_sunat():
         raise HTTPException(status_code=500, detail=f"Error en run-sunat: {str(e)}")
 
 
+@app.get("/run-sunat-stream")
+async def run_sunat_stream():
+    from sse_starlette.sse import EventSourceResponse
+    import asyncio, json
+
+    async def generator():
+        from sunat_scraper import run_sunat_scraper
+        from drive_service import upload_to_drive
+
+        rows = supabase.table("invoices").select(
+            "ruc, tipo_comprobante, serie, numero_comprobante"
+        ).execute()
+
+        comprobantes = [
+            {"ruc_emisor": r["ruc"], "tipo": r["tipo_comprobante"], "serie": r["serie"], "numero": r["numero_comprobante"]}
+            for r in (rows.data or [])
+            if r.get("ruc") and r.get("serie") and r.get("numero_comprobante")
+        ]
+
+        if not comprobantes:
+            yield {"data": json.dumps({"error": "No hay comprobantes en la tabla invoices"})}
+            return
+
+        total = len(comprobantes)
+        guardados = []
+        errores = []
+        loop = asyncio.get_event_loop()
+        queue = asyncio.Queue()
+
+        yield {"data": json.dumps({"type": "start", "total": total})}
+
+        def procesar_uno(r):
+            if "error" in r:
+                errores.append(r)
+                data = {"type": "progress", "current": len(guardados) + len(errores), "total": total,
+                        "serie": r.get("serie", ""), "numero": r.get("numero", ""), "status": "error", "msg": r["error"][:80]}
+                asyncio.run_coroutine_threadsafe(queue.put(data), loop)
+                return
+
+            drive_pdf_url = ""
+            drive_xml_url = ""
+            try:
+                if r.get("pdf"):
+                    drive_pdf_url = upload_to_drive(r["pdf"])
+            except Exception as e:
+                print(f"  [Drive] Error PDF: {e}")
+            try:
+                if r.get("xml"):
+                    drive_xml_url = upload_to_drive(r["xml"])
+            except Exception as e:
+                print(f"  [Drive] Error XML: {e}")
+
+            supabase.table("sunat_comprobantes").insert({
+                "ruc": r["ruc_emisor"], "tipo_comprobante": r.get("tipo", "01"),
+                "serie": r["serie"], "numero_comprobante": r["numero"],
+                "drive_pdf_url": drive_pdf_url, "drive_xml_url": drive_xml_url,
+            }).execute()
+            guardados.append(r)
+
+            data = {"type": "progress", "current": len(guardados) + len(errores), "total": total,
+                    "serie": r["serie"], "numero": r["numero"], "status": "ok",
+                    "pdf": bool(drive_pdf_url), "xml": bool(drive_xml_url)}
+            asyncio.run_coroutine_threadsafe(queue.put(data), loop)
+
+        future = loop.run_in_executor(None, lambda: run_sunat_scraper(comprobantes, on_result=procesar_uno))
+
+        processed = 0
+        while processed < total:
+            try:
+                data = await asyncio.wait_for(queue.get(), timeout=600)
+                processed += 1
+                yield {"data": json.dumps(data)}
+            except asyncio.TimeoutError:
+                break
+
+        try:
+            await future
+        except Exception as e:
+            yield {"data": json.dumps({"type": "error", "msg": str(e)})}
+            return
+
+        from email_service import send_sunat_notification
+        from datetime import date
+        rows_sunat = supabase.table("sunat_comprobantes").select("drive_pdf_url, drive_xml_url").execute()
+        data_sunat = rows_sunat.data or []
+        send_sunat_notification(
+            total=len(guardados),
+            pdfs=sum(1 for r in data_sunat if r.get("drive_pdf_url")),
+            xmls=sum(1 for r in data_sunat if r.get("drive_xml_url")),
+            errores=len(errores),
+            fecha=date.today().strftime("%d/%m/%Y"),
+        )
+        yield {"data": json.dumps({"type": "done", "guardados": len(guardados), "errores": len(errores)})}
+
+    return EventSourceResponse(generator())
+
+
 @app.post("/sync-email")
 async def sync_email():
     try:
