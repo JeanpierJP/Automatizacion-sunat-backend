@@ -101,7 +101,7 @@ def cerrar_modal_campana(page):
 
 
 def ir_a_comprobantes(page):
-    cerrar_popup(page)
+    # No llamar cerrar_popup aquí, ya se cerró en login
     cerrar_modal_campana(page)
 
     print(f"  [DEBUG] URL: {page.url}")
