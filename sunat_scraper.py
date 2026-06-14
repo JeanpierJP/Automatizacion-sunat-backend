@@ -64,7 +64,15 @@ def cerrar_popup(page):
 
 
 def login(page):
-    page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+    for intento in range(3):
+        try:
+            page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+            break
+        except Exception as e:
+            print(f"  Login intento {intento+1} fallido: {e}")
+            if intento == 2:
+                raise
+            page.wait_for_timeout(5000)
     page.fill("#txtRuc", SUNAT_RUC)
     page.fill("#txtUsuario", SUNAT_USER)
     page.fill("#txtContrasena", SUNAT_PASS)
@@ -259,9 +267,17 @@ def run_sunat_scraper(comprobantes: list[dict], on_result=None) -> list[dict]:
         browser = p.chromium.launch(
             headless=IS_PROD,
             slow_mo=0 if IS_PROD else 400,
-            args=["--no-sandbox", "--disable-setuid-sandbox"] if IS_PROD else [],
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+            ] if IS_PROD else [],
         )
-        context = browser.new_context(accept_downloads=True)
+        context = browser.new_context(
+            accept_downloads=True,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        )
         page = context.new_page()
 
         login(page)
