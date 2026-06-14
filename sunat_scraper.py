@@ -101,20 +101,20 @@ def ir_a_comprobantes(page):
     """Navega a Nueva Consulta de comprobantes de pago usando el menú de SUNAT."""
     cerrar_modal_campana(page)
 
-    page.click("h4:has-text('Empresas')", timeout=10000)
-    page.wait_for_timeout(1000)
+    page.click("h4:has-text('Empresas')", timeout=30000)
+    page.wait_for_timeout(2000)
 
-    page.click(".spanNivelDescripcion:has-text('Comprobantes de pago')", timeout=10000)
-    page.wait_for_timeout(800)
+    page.click(".spanNivelDescripcion:has-text('Comprobantes de pago')", timeout=20000)
+    page.wait_for_timeout(1500)
 
-    page.locator(".spanNivelDescripcion:has-text('Comprobantes de Pago')").nth(1).click(timeout=10000)
-    page.wait_for_timeout(800)
+    page.locator(".spanNivelDescripcion:has-text('Comprobantes de Pago')").nth(1).click(timeout=20000)
+    page.wait_for_timeout(1500)
 
-    page.click(".spanNivelDescripcion:has-text('Consulta de Comprobantes de Pago')", timeout=10000)
-    page.wait_for_timeout(800)
+    page.click(".spanNivelDescripcion:has-text('Consulta de Comprobantes de Pago')", timeout=20000)
+    page.wait_for_timeout(1500)
 
-    page.click(".spanNivelDescripcion:has-text('Nueva Consulta de comprobantes de pago')", timeout=10000)
-    page.wait_for_timeout(3000)
+    page.click(".spanNivelDescripcion:has-text('Nueva Consulta de comprobantes de pago')", timeout=20000)
+    page.wait_for_timeout(5000)
     print("Formulario de consulta cargado")
 
 
