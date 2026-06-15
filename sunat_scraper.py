@@ -75,6 +75,7 @@ def login(page):
     page.fill("#txtRuc", SUNAT_RUC)
     page.fill("#txtUsuario", SUNAT_USER)
     page.fill("#txtContrasena", SUNAT_PASS)
+    page.wait_for_timeout(1500)
     page.click("#btnAceptar")
 
     # Esperar que SUNAT procese el login (igual que el deploy que funcionó)
