@@ -76,7 +76,25 @@ def login(page):
     page.fill("#txtUsuario", SUNAT_USER)
     page.fill("#txtContrasena", SUNAT_PASS)
     page.click("#btnAceptar")
-    page.wait_for_url("*e-menu.sunat.gob.pe*", timeout=60000)
+    page.wait_for_load_state("networkidle", timeout=30000)
+    print(f"  [DEBUG] URL post-login: {page.url[:80]}")
+
+    # Si el JS de SUNAT no redirigió solo, extraemos el code y navegamos manualmente
+    if "api-seguridad.sunat.gob.pe" in page.url and "code=" in page.url:
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(page.url)
+        params = parse_qs(parsed.query)
+        code  = params.get("code",  [""])[0]
+        state = params.get("state", [""])[0]
+        print(f"  [DEBUG] Code extraído: {code[:30]}...")
+        auth_url = f"https://e-menu.sunat.gob.pe/cl-ti-itmenu/AutenticaMenuInternet.htm?code={code}&state={state}"
+        page.goto(auth_url, wait_until="networkidle", timeout=60000)
+        print(f"  [DEBUG] URL tras goto auth: {page.url[:80]}")
+    elif "e-menu.sunat.gob.pe" in page.url:
+        print(f"  [DEBUG] Redirect automático funcionó")
+    else:
+        print(f"  [DEBUG] URL inesperada: {page.url[:80]}")
+
     cerrar_popup(page)
     print("Login SUNAT OK")
 
