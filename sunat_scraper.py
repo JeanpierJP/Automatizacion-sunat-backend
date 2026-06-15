@@ -76,18 +76,7 @@ def login(page):
     page.fill("#txtUsuario", SUNAT_USER)
     page.fill("#txtContrasena", SUNAT_PASS)
     page.click("#btnAceptar")
-
-    # Esperar que llegue el código OAuth
-    page.wait_for_load_state("domcontentloaded", timeout=60000)
-    page.wait_for_timeout(3000)
-
-    # Si se quedó en api-seguridad, navegar manualmente al menú
-    if "api-seguridad.sunat.gob.pe" in page.url:
-        print(f"  [DEBUG] Redirigiendo manualmente al menú...")
-        page.goto("https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm",
-                  wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(3000)
-
+    page.wait_for_url("*e-menu.sunat.gob.pe*", timeout=60000)
     cerrar_popup(page)
     print("Login SUNAT OK")
 
@@ -291,14 +280,14 @@ def run_sunat_scraper(comprobantes: list[dict], on_result=None) -> list[dict]:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=IS_PROD,
+            headless=False,
             slow_mo=0 if IS_PROD else 400,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-dev-shm-usage",
-            ] if IS_PROD else [],
+            ],
         )
         context = browser.new_context(
             accept_downloads=True,
