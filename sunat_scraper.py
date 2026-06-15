@@ -153,13 +153,14 @@ def ir_a_comprobantes(page):
 
 def get_form_frame(page):
     """Retorna el frame que contiene el formulario (puede estar en iframe Angular)."""
-    page.wait_for_timeout(2000)
-    for frame in page.frames:
-        try:
-            if frame.locator("input[name='rucEmisor']").count() > 0:
-                return frame
-        except Exception:
-            continue
+    for _ in range(15):
+        for frame in page.frames:
+            try:
+                if frame.locator("input[name='rucEmisor']").count() > 0:
+                    return frame
+            except Exception:
+                continue
+        page.wait_for_timeout(1000)
     return page  # fallback: form está directo en la página
 
 
