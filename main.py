@@ -201,6 +201,15 @@ async def upload_file(file: UploadFile = File(...)):
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
 
+@app.delete("/sunat-comprobantes")
+def clear_sunat_comprobantes():
+    try:
+        supabase.table("sunat_comprobantes").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        return {"status": "success", "message": "Tabla sunat_comprobantes limpiada"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error limpiando sunat_comprobantes: {str(e)}")
+
+
 @app.get("/sunat-comprobantes")
 def get_sunat_comprobantes():
     try:
