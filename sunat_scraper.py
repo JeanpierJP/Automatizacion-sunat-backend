@@ -77,10 +77,16 @@ def login(page):
     page.fill("#txtContrasena", SUNAT_PASS)
     page.click("#btnAceptar")
 
-    # Esperar que complete el OAuth y llegue al menú
-    page.wait_for_url("**/e-menu.sunat.gob.pe/**", timeout=60000)
-    page.wait_for_load_state("domcontentloaded", timeout=30000)
-    page.wait_for_timeout(3000)
+    # Esperar cualquier navegación post-login
+    page.wait_for_load_state("domcontentloaded", timeout=60000)
+    page.wait_for_timeout(5000)  # dar tiempo al OAuth
+
+    # Si aún no llegó al menú, esperar más
+    for _ in range(12):
+        if "e-menu.sunat.gob.pe" in page.url:
+            break
+        print(f"  [DEBUG] Esperando redirect... URL actual: {page.url}")
+        page.wait_for_timeout(5000)
 
     cerrar_popup(page)
     print("Login SUNAT OK")
