@@ -76,24 +76,26 @@ def login(page):
     page.fill("#txtUsuario", SUNAT_USER)
     page.fill("#txtContrasena", SUNAT_PASS)
     page.click("#btnAceptar")
-    page.wait_for_load_state("networkidle", timeout=30000)
-    print(f"  [DEBUG] URL post-login: {page.url[:80]}")
 
-    # Si el JS de SUNAT no redirigió solo, extraemos el code y navegamos manualmente
-    if "api-seguridad.sunat.gob.pe" in page.url and "code=" in page.url:
-        from urllib.parse import urlparse, parse_qs
-        parsed = urlparse(page.url)
-        params = parse_qs(parsed.query)
-        code  = params.get("code",  [""])[0]
-        state = params.get("state", [""])[0]
-        print(f"  [DEBUG] Code extraído: {code[:30]}...")
-        auth_url = f"https://e-menu.sunat.gob.pe/cl-ti-itmenu/AutenticaMenuInternet.htm?code={code}&state={state}"
-        page.goto(auth_url, wait_until="networkidle", timeout=60000)
-        print(f"  [DEBUG] URL tras goto auth: {page.url[:80]}")
-    elif "e-menu.sunat.gob.pe" in page.url:
-        print(f"  [DEBUG] Redirect automático funcionó")
+    # Esperar que SUNAT procese el login y redirija al callback OAuth con el code
+    try:
+        page.wait_for_url("*code=*", timeout=30000)
+    except PWTimeout:
+        pass
+    print(f"  [DEBUG] URL post-click: {page.url[:80]}")
+
+    # Dar tiempo al JS del callback para establecer cookies de sesión
+    page.wait_for_timeout(8000)
+    print(f"  [DEBUG] URL tras espera JS: {page.url[:80]}")
+
+    # Si el redirect automático a e-menu no ocurrió, navegamos directamente
+    if "e-menu.sunat.gob.pe" not in page.url.split("?")[0]:
+        print(f"  [DEBUG] Navegando a e-menu con cookies de sesión...")
+        page.goto("https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm",
+                  wait_until="networkidle", timeout=30000)
+        print(f"  [DEBUG] URL tras goto e-menu: {page.url[:80]}")
     else:
-        print(f"  [DEBUG] URL inesperada: {page.url[:80]}")
+        print(f"  [DEBUG] Redirect automático a e-menu funcionó")
 
     cerrar_popup(page)
     print("Login SUNAT OK")
@@ -298,7 +300,7 @@ def run_sunat_scraper(comprobantes: list[dict], on_result=None) -> list[dict]:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=False,
+            headless=IS_PROD,
             slow_mo=0 if IS_PROD else 400,
             args=[
                 "--no-sandbox",
