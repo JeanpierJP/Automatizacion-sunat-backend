@@ -77,11 +77,8 @@ def login(page):
     page.fill("#txtContrasena", SUNAT_PASS)
     page.click("#btnAceptar")
 
-    # Esperar que SUNAT procese el login y redirija al callback OAuth con el code
-    try:
-        page.wait_for_url("*code=*", timeout=30000)
-    except PWTimeout:
-        pass
+    # Esperar que SUNAT procese el login (igual que el deploy que funcionó)
+    page.wait_for_load_state("networkidle", timeout=60000)
     print(f"  [DEBUG] URL post-click: {page.url[:80]}")
 
     # Dar tiempo al JS del callback para establecer cookies de sesión
