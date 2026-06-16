@@ -1,28 +1,42 @@
 import os
-import json
-import base64
 from pathlib import Path
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from dotenv import load_dotenv
 
 load_dotenv()
 
+OAUTH_FILE      = os.getenv("GOOGLE_OAUTH_FILE", "client_secret.json")
+TOKEN_FILE      = "token.json"
 DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-SA_FILE = "comprobauto-backend-4f05bba3a32f.json"
 
 
 def _service():
-    if Path(SA_FILE).exists():
-        creds = service_account.Credentials.from_service_account_file(SA_FILE, scopes=SCOPES)
-    else:
-        sa_b64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-        if not sa_b64:
-            raise ValueError("No se encontró credencial de cuenta de servicio")
-        info = json.loads(base64.b64decode(sa_b64).decode())
-        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    creds = None
+
+    # En Render, el token viene codificado en base64 como variable de entorno
+    token_env = os.getenv("GOOGLE_TOKEN_JSON")
+    if token_env and not Path(TOKEN_FILE).exists():
+        import base64
+        with open(TOKEN_FILE, "w") as f:
+            f.write(base64.b64decode(token_env).decode())
+
+    if Path(TOKEN_FILE).exists():
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(OAUTH_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open(TOKEN_FILE, "w") as f:
+            f.write(creds.to_json())
+
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
