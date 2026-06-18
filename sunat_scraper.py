@@ -1,4 +1,5 @@
 import os
+import zipfile
 import pandas as pd
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -24,6 +25,20 @@ TIPO_TEXTO = {
     "09": "Guía de Remisión",
     "12": "Ticket",
 }
+
+
+def _extract_if_zip(path: Path, ext: str) -> Path:
+    """Si el archivo descargado es un ZIP, extrae el primer archivo con la extensión dada."""
+    if not zipfile.is_zipfile(path):
+        return path
+    with zipfile.ZipFile(path) as zf:
+        for name in zf.namelist():
+            if name.lower().endswith(ext):
+                extracted = path.parent / Path(name).name
+                zf.extract(name, path.parent)
+                path.unlink()
+                return extracted
+    return path
 
 
 def leer_excel() -> list[dict]:
@@ -235,6 +250,7 @@ def descargar_comprobante(page, comp: dict, download_dir: str) -> dict:
                         timeout=8000
                     )
                 dl.value.save_as(str(pdf_path))
+                pdf_path = _extract_if_zip(pdf_path, ".pdf")
                 resultado["pdf"] = str(pdf_path)
                 print(f"  PDF: {pdf_path.name}")
             except Exception as e:
@@ -250,6 +266,7 @@ def descargar_comprobante(page, comp: dict, download_dir: str) -> dict:
                         timeout=8000
                     )
                 dl.value.save_as(str(xml_path))
+                xml_path = _extract_if_zip(xml_path, ".xml")
                 resultado["xml"] = str(xml_path)
                 print(f"  XML: {xml_path.name}")
             except Exception as e:
