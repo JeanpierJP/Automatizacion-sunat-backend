@@ -5,7 +5,7 @@ Abre el navegador — inicia sesión con l66644948@gmail.com.
 from google_auth_oauthlib.flow import InstalledAppFlow
 import glob, os
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 # Busca el client_secret automáticamente
 archivos = glob.glob("client_secret*.json")

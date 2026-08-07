@@ -12,7 +12,7 @@ load_dotenv()
 OAUTH_FILE      = os.getenv("GOOGLE_OAUTH_FILE", "client_secret.json")
 TOKEN_FILE      = "token.json"
 DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-SCOPES = ["https://www.googleapis.com/auth/drive"]
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
 def _service():
